@@ -1,0 +1,111 @@
+#ifndef _COMMUNICATE_H_
+#define _COMMUNICATE_H_
+#include "spi.h"
+#include "mySpi.h"
+
+#ifdef RAVEN
+#define NRF24L01_CE_HIGH()     do {PEout(0) = 1;} while(0)
+#define NRF24L01_CE_LOW()      do {PEout(0) = 0;} while(0)
+#elif URANUS
+#define NRF24L01_CE_HIGH()     do {PBout(0) = 1;} while(0)
+#define NRF24L01_CE_LOW()      do {PBout(0) = 0;} while(0)
+#elif ATOM
+#define NRF24L01_CE_HIGH()     do {PAout(12) = 1;} while(0)
+#define NRF24L01_CE_LOW()      do {PAout(12) = 0;} while(0)
+#else
+#warning  "no NRF24L01 CE operation defined!"
+#define NRF24L01_CE_HIGH()     void(0)
+#define NRF24L01_CE_LOW()      void(0)
+#endif
+
+#define NRF24L01_DEBUG		0
+#if ( NRF24L01_DEBUG == 1 )
+#define NRF24L01_TRACE	printf
+#else
+#define NRF24L01_TRACE(...)
+#endif
+
+/* STATUS Bit Fields */
+#define STATUS_RX_DR_MASK           0x40u 
+#define STATUS_TX_DS_MASK           0x20u
+#define STATUS_MAX_RT_MASK          0x10u
+#define STATUS_RX_P_NO_SHIFT        1
+#define STATUS_RX_P_NO_MASK         0x0Eu
+#define STATUS_RX_P_NO(x)           (((uint8_t)(((uint32_t)(x))<<STATUS_RX_P_NO_SHIFT))&STATUS_RX_P_NO_MASK)
+#define STATUS_TX_FULL              0x01u
+/* CONFIG bit Fields */
+#define CONFIG_PRIM_RX_MASK         0x01u
+#define CONFIG_PWR_UP_MASK          0x02u
+#define CONFIG_CRCO_MASK            0x04u
+#define CONFIG_EN_CRC_MASK          0x08u
+#define CONFIG_MASK_MAX_RT_MASK     0x10u
+#define CONFIG_MASK_TX_DS_MASK      0x20u
+#define CONFIG_MASK_RX_DS_MASK      0x40u
+/* OBSERVE_TX bit Fields */
+#define OBSERVE_TX_ARC_CNT_MASK     0x0Fu
+#define OBSERVE_TX_ARC_CNT_SHIFT    0
+#define OBSERVE_TX_PLOS_CNT_MASK    0xF0u
+#define OBSERVE_TX_PLOS_CNT_SHIFT   4
+//********************************************************************************************************************// 
+/* SPI(nRF24L01) ??芍? */
+#define READ_REG                    0x00   // ?芍??????∩??¯
+#define WRITE_REG                   0x20   // D∩??????∩??¯
+#define RD_RX_PLOAD                 0x61   // ?芍豕?RX FIFO?D米?那y?Y
+#define WR_TX_PLOAD                 0xA0   // ?辰TX FIFO?DD∩豕?那y?Y
+#define FLUSH_TX                    0xE1   // ??3yTX FIFO?D米?那y?Y 車|車?車迆﹞⊿谷??㏒那???
+#define FLUSH_RX                    0xE2   // ??3yRX FIFO?D米?那y?Y 車|車?車迆?車那??㏒那???
+#define REUSE_TX_PL                 0xE3   // ??D?那1車?谷?辰?～邦車DD∫那y?Y
+#define R_RX_PL_WID                 0x60
+#define NOP                         0xFF   // ㊣㏒芍?
+//********************************************************************************************************************// 
+/* register define */
+#define CONFIG              0x00  //????﹞⊿?赤℅∩足?㏒?CRCD㏒?谷?㏒那?辰??～﹞⊿那?﹞⊿℅∩足??足車|﹞?那?
+#define EN_AA               0x01  //℅??‘車|∩e1|?邦谷豕??
+#define EN_RXADDR           0x02  //?谷車?D?米角谷豕??
+#define SETUP_AW            0x03  //那?﹞⊿米??﹞?赤?豕谷豕??
+#define SETUP_RETR          0x04  //℅??‘??﹞⊿1|?邦谷豕谷豕??
+#define RF_CH               0x05  //1∟℅¯?米?那谷豕?“
+#define RF_SETUP            0x06
+#define STATUS              0x07
+#define OBSERVE_TX          0x08 //﹞⊿?赤?足2a??∩??¯
+#define CD                  0x09
+#define RX_ADDR_P0          0x0A
+#define RX_ADDR_P1          0x0B
+#define RX_ADDR_P2          0x0C
+#define RX_ADDR_P3          0x0D
+#define RX_ADDR_P4          0x0E
+#define RX_ADDR_P5          0x0F
+#define TX_ADDR             0x10
+#define RX_PW_P0            0x11
+#define RX_PW_P1            0x12
+#define RX_PW_P2            0x13
+#define RX_PW_P3            0x14
+#define RX_PW_P4            0x15
+#define RX_PW_P5            0x16
+#define FIFO_STATUS         0x17
+#define PYNPD               0x1C
+#define FEATURE             0x1D
+
+const uint8_t TX_ADDRESS[5]={0x34,0x43,0x10,0x10,0x01}; 
+const uint8_t RX_ADDRESS[5]={0x34,0x43,0x10,0x10,0x01}; 
+
+
+class communicate: public mySpi{
+public:
+
+	communicate() : mySpi(SPI2_SCK_PB21_SOUT_PB22_SIN_PB23, HW_SPI2, kSPI_CPOL0_CPHA1, 1000*1000){}
+	
+	int      is();
+	void     setRxMode();
+	void     setTxMode();
+	void     nrfReadBuffer(uint8_t addr, uint8_t *buf, uint32_t len);
+	void     nrfWriteBuffer(uint8_t addr, uint8_t *buf, uint32_t len);
+	uint8_t  nrfReadReg(uint8_t addr);
+	void     nrfWriteReg(uint8_t addr, uint8_t val);
+	int      write(uint8_t *buf, uint32_t len);
+	int      read(uint8_t *buf, uint32_t *len);
+};
+
+
+
+#endif

@@ -1,0 +1,149 @@
+#include "communicate.h"
+#include "spi.h"
+#include "nrf2401.h"
+
+int communicate::is(){
+	
+	this->addDevice((SPI_Mode_Type)4, 8); //????????
+	
+    uint8_t i;
+    uint8_t buf[5];
+	this->nrfReadBuffer(TX_ADDR, buf, 5);
+    for(i = 0; i < 5; i++)
+    {
+        if((buf[i]!= 0) && (buf[i] != 0xFF))
+        {
+            NRF24L01_CE_LOW();
+            /* init sequence */
+            this->nrfWriteReg(CONFIG, 0x0F); /* config */
+            this->nrfWriteReg(EN_AA, 0x03);/* aa */
+            this->nrfWriteReg(EN_RXADDR, 0x03); /* available pipe */
+            this->nrfWriteReg(SETUP_AW, 0x03);  /* setup_aw */
+            this->nrfWriteReg(SETUP_RETR, 0x07);/* setup_retr */
+            this->nrfWriteReg(RF_CH,40);/* RF freq */
+            this->nrfWriteReg(RF_SETUP, 0X04);
+            this->nrfWriteReg(RX_PW_P0, 0X20);
+            this->nrfWriteReg(RX_PW_P1, 0X20);
+            this->nrfWriteReg(RX_PW_P2, 0X20);
+            this->nrfWriteReg(RX_PW_P3, 0X20);
+            this->nrfWriteReg(RX_PW_P4, 0X20);
+            this->nrfWriteReg(RX_PW_P5, 0X20);
+            this->nrfWriteReg(PYNPD, 0x3F); /* enable dynmic playload whhich means packet len is varible */
+            this->nrfWriteReg(FEATURE, 0x07); /* enable dynmic playload whhich means packet len is varible */
+            this->nrfWriteBuffer(RX_ADDR_P0, (uint8_t*)RX_ADDRESS, 5);
+            this->nrfWriteBuffer(TX_ADDR, (uint8_t*)TX_ADDRESS, 5);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void communicate::setRxMode(){
+	uint8_t value;
+    /* reflash data */
+    value = FLUSH_RX;
+	this->spiWrite(&value, 1, 0, kSPI_PCS_ReturnInactive);
+	NRF24L01_CE_LOW();
+    /* set CONFIG_PRIM_RX_MASK to enable Rx */
+    value = this->nrfReadReg(CONFIG);
+    value |= CONFIG_PRIM_RX_MASK;
+    this->nrfWriteReg(CONFIG, value);
+	NRF24L01_CE_HIGH();
+}
+
+void communicate::setTxMode(){
+    uint8_t value;
+    value = FLUSH_TX;
+    this->spiWrite(&value, 1, 0, kSPI_PCS_ReturnInactive);
+    NRF24L01_CE_LOW();
+    value = this->nrfReadReg(CONFIG);
+    value &= ~CONFIG_PRIM_RX_MASK;
+    this->nrfWriteReg(CONFIG, value); /* Set PWR_UP bit, enable CRC(2 length) & Prim:RX. RX_DR enabled.. */
+    NRF24L01_CE_HIGH();
+}
+uint8_t communicate::nrfReadReg(uint8_t addr){
+    uint8_t temp = READ_REG + addr;
+    this->spiWrite(&temp, 1, 0, kSPI_PCS_KeepAsserted);    //0
+    this->spiRead(&temp, 1, 0, kSPI_PCS_ReturnInactive);   //1
+    return temp;
+}
+void communicate::nrfWriteReg(uint8_t addr, uint8_t val){
+    uint8_t temp = WRITE_REG + addr;
+    this->spiWrite(&temp, 1, 0, kSPI_PCS_KeepAsserted);    //0
+    this->spiWrite(&val, 1, 0, kSPI_PCS_ReturnInactive);   //1
+}
+void communicate::nrfReadBuffer(uint8_t addr, uint8_t *buf, uint32_t len){
+	uint8_t temp = READ_REG + addr;
+    this->spiWrite(&temp, 1, 0, kSPI_PCS_KeepAsserted);    //0
+    this->spiRead(buf, len, 0, kSPI_PCS_ReturnInactive);   //1
+}
+void communicate::nrfWriteBuffer(uint8_t addr, uint8_t *buf, uint32_t len){
+	uint8_t temp = WRITE_REG + addr;
+    this->spiWrite(&temp, 1, 0, kSPI_PCS_KeepAsserted);    //0
+    this->spiWrite(buf, len, 0, kSPI_PCS_ReturnInactive);  //1
+}
+
+int communicate::write(uint8_t *buf, uint32_t len){
+    uint8_t status;
+    uint8_t plos;
+    /* clear bits */
+    status = this->nrfReadReg(STATUS);
+    status |= STATUS_TX_DS_MASK | STATUS_MAX_RT_MASK;
+    this->nrfWriteReg(STATUS, status);
+    NRF24L01_CE_LOW();
+    /* clear PLOS */
+    this->nrfWriteReg(RF_CH, 40); 
+    /* write data */
+    uint8_t value = WR_TX_PLOAD;
+    this->spiWrite(&value, 1,0, kSPI_PCS_KeepAsserted);
+    this->spiWrite(buf, len, 0,kSPI_PCS_ReturnInactive);
+    NRF24L01_CE_HIGH();
+    while(1)
+    {
+        status = this->nrfReadReg(STATUS);
+        if(status & STATUS_TX_DS_MASK)
+        {
+            /* send complete */
+            status |= STATUS_TX_DS_MASK | STATUS_MAX_RT_MASK;
+            this->nrfWriteReg(STATUS, status);
+            return 0;
+        }
+        status = this->nrfReadReg(OBSERVE_TX);
+        plos = (status & OBSERVE_TX_PLOS_CNT_MASK) >> OBSERVE_TX_PLOS_CNT_SHIFT;
+        
+        /* if it reach max re send count */
+        if(plos && (status & STATUS_MAX_RT_MASK))
+        {
+            status = FLUSH_TX; /* clear TX FIFO */
+            this->spiWrite(&status, 1, 0, kSPI_PCS_ReturnInactive);
+            return 1;
+        }
+    }
+}
+
+int communicate::read(uint8_t *buf, uint32_t *len){
+uint8_t sta,rev_len;
+    sta = this->nrfReadReg(STATUS);
+	if(sta & STATUS_RX_DR_MASK)
+	{
+        /* clear pendign bit */
+        sta |= STATUS_RX_DR_MASK;
+        this->nrfWriteReg(STATUS, sta);
+        /* read len and data */
+        rev_len = this->nrfReadReg(R_RX_PL_WID);
+        this->nrfReadBuffer(RD_RX_PLOAD, buf, rev_len);
+        *len = rev_len;
+        /* if rev_len > 32 which means a error occur, usr FLUSH_RX to clear */
+        if(rev_len > 32)
+        {
+            NRF24L01_TRACE("rev len > 32, error!\r\n");
+            sta = FLUSH_RX;
+            this->spiWrite(&sta, 1, 0, kSPI_PCS_ReturnInactive);
+            *len = 32;
+            return 2;
+        }
+        return 0;
+	}
+    *len = 0;
+    return 1;
+}

@@ -1,0 +1,78 @@
+#include "mySpi.h"
+#include "spi.h"
+#include "common.h"
+#include "gpio.h"
+
+mySpi::mySpi(uint32_t _MAP, uint32_t _instance, SPI_FrameFormat_Type _frameFormat, uint32_t _baudrate){
+	this->MAP = _MAP;
+	this->instance = _instance;
+	this->frameFormat =  frameFormat;
+	this->baudrate =  _baudrate;
+	this->MYSPI = this->mySpiQuickInit(_MAP, _frameFormat, _baudrate);
+}
+
+SPI_InitTypeDef mySpi::mySpiQuickInit(uint32_t MAP, SPI_FrameFormat_Type frameFormat, uint32_t baudrate){
+    uint32_t i;
+    map_t * pq = (map_t*)&(MAP);
+    SPI_InitTypeDef SPI_InitStruct1;
+    SPI_InitStruct1.baudrate = baudrate;
+    SPI_InitStruct1.frameFormat = (SPI_FrameFormat_Type)frameFormat;
+    SPI_InitStruct1.dataSize = 8;
+    SPI_InitStruct1.instance = pq->ip;
+    SPI_InitStruct1.mode = kSPI_Master;
+    SPI_InitStruct1.bitOrder = kSPI_MSB;
+    SPI_InitStruct1.ctar = HW_CTAR0;
+    /* init pinmux */
+    for(i = 0; i < pq->pin_cnt; i++)
+    {
+        PORT_PinMuxConfig(pq->io, pq->pin_start + i, (PORT_PinMux_Type) pq->mux); 
+    }
+    /* init moudle */
+    SPI_Init(&SPI_InitStruct1);
+    return SPI_InitStruct1;
+}
+
+void mySpi::interrupt(SPI_ITDMAConfig_Type config, bool status){
+	SPI_ITDMAConfig(this->instance, config, status);
+}
+
+void mySpi::addCallBack(SPI_CallBackType AppCBFun){
+	SPI_CallbackInstall(this->instance, AppCBFun);
+}
+
+uint16_t mySpi::rwBytes(uint32_t ctar, uint16_t data, uint16_t CSn, SPI_PCS_Type csState){
+	SPI_ReadWriteByte(this->instance, ctar, data, CSn, csState);
+}
+
+int mySpi::spiRead(uint8_t *buf, uint32_t len, uint16_t CSn, SPI_PCS_Type csState){
+    uint16_t dummy = 0xFFFF;
+    len--;
+    while(len--){
+        *buf++ = this->rwBytes(HW_CTAR0, dummy, CSn, kSPI_PCS_KeepAsserted);
+    }
+    if(csState == kSPI_PCS_KeepAsserted){
+        *buf++ = this->rwBytes(HW_CTAR0, dummy, CSn, kSPI_PCS_KeepAsserted);
+    }else{
+        *buf++ = this->rwBytes(HW_CTAR0, dummy, CSn, kSPI_PCS_ReturnInactive);
+    }
+    return SPI_EOK;
+}
+
+int mySpi::spiWrite(uint8_t *buf, uint32_t len, uint16_t CSn, SPI_PCS_Type csState){
+    len--;
+    while(len--){
+		this->rwBytes(HW_CTAR0, *buf++, CSn, kSPI_PCS_KeepAsserted);
+    }
+    if(csState == kSPI_PCS_KeepAsserted){
+		this->rwBytes(HW_CTAR0, *buf++, CSn, kSPI_PCS_KeepAsserted);
+    }else{
+		this->rwBytes(HW_CTAR0, *buf++, CSn, kSPI_PCS_ReturnInactive);
+    }
+    return SPI_EOK;
+}
+
+void  mySpi::addDevice(	SPI_Mode_Type _mode, uint8_t _dataSize){
+	this->MYSPI.mode = _mode;
+	this->MYSPI.dataSize = _dataSize;
+	SPI_Init(&(this->MYSPI));
+}

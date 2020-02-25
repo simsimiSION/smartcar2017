@@ -1,0 +1,21 @@
+#include "spi.h"
+#include "spi_abstraction.h"
+
+class mySpi{
+protected:
+	uint32_t MAP;
+	SPI_FrameFormat_Type frameFormat;
+	uint32_t baudrate;
+	uint32_t instance;
+	SPI_InitTypeDef MYSPI;
+public:
+	
+	mySpi(uint32_t MAP, uint32_t _instance, SPI_FrameFormat_Type frameFormat, uint32_t baudrate); //include init
+	SPI_InitTypeDef  mySpiQuickInit(uint32_t MAP, SPI_FrameFormat_Type frameFormat, uint32_t baudrate);
+	void             interrupt(SPI_ITDMAConfig_Type config, bool status);
+	void             addCallBack(SPI_CallBackType AppCBFun);
+	uint16_t         rwBytes(uint32_t ctar, uint16_t data, uint16_t CSn, SPI_PCS_Type csState);
+    int              spiRead(uint8_t *buf, uint32_t len, uint16_t CSn, SPI_PCS_Type csState);
+	int              spiWrite(uint8_t *buf, uint32_t len, uint16_t CSn, SPI_PCS_Type csState);
+	void             addDevice(	SPI_Mode_Type _mode, uint8_t _dataSize);
+};
